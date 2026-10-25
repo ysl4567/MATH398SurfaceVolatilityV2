@@ -1,0 +1,164 @@
+---
+title: "Final Output"
+author: "Yuto Sugiyama"
+date: "Sunday, October 25, 2026"
+
+output:
+  pdf_document: default
+  html_document: default
+---
+## Summary: model-implied versus market volatility surface (OEX)
+
+```{r summary-setup, include=FALSE}
+library(knitr)
+out_dir <- "output"   # folder written by OEX_surface_comparison.py
+summ <- read.csv(file.path(out_dir, "OEX_calibration_summary.csv"))
+```
+
+### What the code does
+
+The script `OEX_surface_comparison.py` builds a model-implied volatility surface for the OEX in each period and compares it with the market volatility data. It reuses the model functions in `SurfaceVolatility.py` without changing them (the perturbation expansion for a stochastic-volatility model after Diehl, then Black-Scholes inversion). The steps are:
+
+1. **Load the data.** The two OEX historical-volatility files are combined (price and 10, 20, 30, 60, 90, 120, 150 and 180 trading-day historical volatility), and the USD interest-rate file is converted from percent to decimals.
+2. **Cut the sample into periods** (listed below).
+3. **Build the market surface.** For each period, the historical volatility is averaged at each of the eight tenors. (A tenor is the length of time over which something is measured or runs.) Because the data contain no option prices, this surface is flat in strike, so the market side is a term structure and not a true implied-volatility surface.
+4. **Tune the model.** Three model parameters are tuned so that the model's at-the-money implied volatility follows the market term structure (details below).
+5. **Build the model surface.** For 15 maturities (10 to 180 trading days, 0.04 to 0.71 years) and 41 strikes (90% to 110% of spot), the script computes the expansion price, then inverts Black-Scholes to get the implied volatility. The interest rate is the period-average USD curve at each maturity, spot is the last price in the period, and there is no dividend yield. Points where $|\ln(K/S_0)| > 2.5\,\sigma\sqrt{T}$ are left out because the expansion is unreliable there.
+6. **Compare and save** the figures and tables described under Outputs.
+
+### Periods used
+
+The full sample runs from 2016-01-04 to 2026-09-30. The pre-COVID window (2016 to 2019) is kept as a single period. The post-COVID years are split into four regimes based on the level and shape of historical volatility, because averaging all of 2020 to 2026 together hides large differences.
+
+| Period | Dates | Why |
+|---|---|---|
+| Pre-COVID | 2016-01-01 to 2019-12-31 | Baseline: moderate volatility |
+| COVID shock | 2020-01-01 to 2020-12-31 | Volatility spike |
+| Recovery | 2021-01-01 to 2021-12-31 | Return to calm |
+| Tightening bear | 2022-01-01 to 2022-12-31 | High volatility, inverted term structure |
+| Normalisation | 2023-01-01 to 2026-09-30 | Moderate volatility again |
+
+### Model parameters: tuned and fixed
+
+**Tuned (per period).** The initial volatility $V_0$, the long-run volatility $\theta$ and the mean-reversion speed $\kappa$ are chosen by least squares so that the model's at-the-money implied volatility matches the average historical volatility at the eight tenors. They are bounded: $V_0 \in [0.02, 0.8]$, $\kappa \in [0.1, 10]$, and $\theta$ between 1.0 and 1.6 times the 180-day historical volatility. In four of the five periods $\theta$ ends at the upper bound, so it is effectively set by the bound rather than estimated from the data; $V_0$ and $\kappa$ are the parameters the fit actually determines.
+
+**Fixed (guessed, not fitted).** The vol-of-vol $\lambda = 0.8$ and the spot-volatility correlation $\rho = -0.7$ are the same in every period. A term structure of historical volatility cannot identify them. The finite-difference step in the expansion is $h = 0.01$ (the original script used $0.5$), and the rates, spot and zero dividend yield are as described above.
+
+```{r summary-params, echo=FALSE}
+ptab <- data.frame(
+  Period = summ$Period,
+  `V0 (tuned)`    = summ$V0,
+  `theta (tuned)` = summ$theta,
+  `kappa (tuned)` = summ$kappa,
+  `lambda (fixed)` = summ$lam,
+  `rho (fixed)`    = summ$rho,
+  check.names = FALSE)
+kable(ptab, digits = 3, caption = "Model parameters by period.")
+```
+
+### How the tuning developed
+
+The tuning went through several rounds. Each round changed one thing (what is free, the bounds, or the guessed vol-of-vol) after the previous round gave a fit that was either poor or implausible. The table below lists the fitted values from every round; the first rows are fixed numbers from those earlier runs, and the final rows are read from `OEX_calibration_summary.csv`.
+
+```{r summary-history, echo=FALSE}
+hist <- data.frame(
+  Round = c("1", "1", "2", "2", "3", "3", "4"),
+  Setting = c(rep("V0, theta and kappa all free", 2),
+              rep("theta fixed at the 180-day market vol; V0, kappa free (kappa >= 0.5)", 2),
+              rep("theta between 1.0 and 1.6 x the 180-day market vol", 2),
+              "As round 3, lambda lowered to 0.8"),
+  Period = c("Pre-COVID (2016-2019)", "Post-COVID (2020-2026)",
+             "Pre-COVID (2016-2019)", "Post-COVID (2020-2026)",
+             "Pre-COVID (2016-2019)", "Post-COVID (2020-2026)",
+             "Post-COVID (2020-2026)"),
+  V0    = c(0.1118, 0.1706, 0.1265, 0.1931, 0.1115, 0.1754, 0.1696),
+  theta = c(0.2193, 0.8000, 0.1316, 0.1921, 0.2106, 0.3074, 0.3074),
+  kappa = c(1.1564, 0.2506, 0.5000, 0.5000, 1.3325, 1.2264, 1.3792),
+  lambda = c(0.8, 1.0, 0.8, 1.0, 0.8, 1.0, 0.8),
+  `ATM RMSE (vol pts)` = c(0.09, 0.07, 0.97, 1.75, 0.09, 0.89, 0.33),
+  check.names = FALSE, stringsAsFactors = FALSE)
+final <- data.frame(
+  Round = "5 (final)",
+  Setting = "As round 4, with the post-COVID years split into four regimes",
+  Period = summ$Period, V0 = summ$V0, theta = summ$theta, kappa = summ$kappa,
+  lambda = summ$lam, `ATM RMSE (vol pts)` = 100 * summ$RMSE_ATM_vs_HV,
+  check.names = FALSE, stringsAsFactors = FALSE)
+kable(rbind(hist, final), digits = 3,
+      caption = "Fitted parameters in each tuning round. Round 4 changes only the post-COVID period, so the pre-COVID row is the same as in round 3.")
+```
+
+- **Round 1: everything free.** The fit was almost exact, but the post-COVID result was not plausible: $\theta$ went to the upper bound of 0.8 (about four times the observed volatility) with a very slow $\kappa$ of 0.25. With only a term structure of historical volatility to fit, a high $\theta$ combined with a slow $\kappa$ can mimic the same curve as a modest $\theta$ combined with a fast $\kappa$, so the data do not separate the two.
+- **Round 2: $\theta$ fixed at the long-end market volatility.** This removed the degeneracy but made the fit clearly worse (errors of 1 to 1.75 volatility points), and $\kappa$ ran into its lower bound. Pinning $\theta$ to the 180-day value leaves too little room for the curve to rise with maturity.
+- **Round 3: $\theta$ allowed between 1.0 and 1.6 times the long-end volatility.** This is a compromise: the pre-COVID fit returned to 0.09 volatility points and $\kappa$ became sensible, but the post-COVID error was still 0.89 points. The cause was the vol-of-vol, which at $\lambda = 1.0$ pulls the model's at-the-money volatility down at long maturities.
+- **Round 4: $\lambda = 0.8$ in both periods.** The post-COVID error fell to 0.33 volatility points.
+- **Round 5: the final run.** The same settings applied to the five regimes. The fit is within 0.4 volatility points in every regime except 2020, where the cap on $\theta$ binds (error 2.1 points).
+
+Two points follow from this history. First, the fitted values of $\theta$ and $\kappa$ depend noticeably on the bounds chosen, so they should be read as descriptive settings that reproduce the curve and not as estimates of the true dynamics. Second, the fitted at-the-money volatility changed little between rounds 3 to 5 for the periods that had good fits, which supports the view that the exact parameter values matter less than the level and slope of the curve they reproduce.
+
+### Outputs
+
+- `OEX_surfaces_model_vs_market.png`: one 3D panel per period, with the model-implied surface (coloured) and the market historical-volatility surface (red, flat in strike) on common axes.
+- `OEX_term_structure_and_smiles.png`: the market term structure against the model at-the-money implied volatility for all periods, and the model smile at about a three-month maturity.
+- `OEX_calibration_summary.csv` and `OEX_term_structure_comparison.csv`: fitted parameters, fit error, 3-month skew, and the market and model values at every tenor.
+- `OEX_surface_<period>.csv` (five files): the full model surface by maturity and strike, with the market value alongside.
+
+### Model-implied surface compared with the market surface
+
+#### Which values are model and which are market
+
+| Value | Where it is | Model or market |
+|---|---|---|
+| `Market_HV` | `OEX_term_structure_comparison.csv` and the `OEX_surface_<period>.csv` files | **Market**: average historical volatility over the period at that tenor. It does not change with strike. |
+| `Model_ATM_IV` | `OEX_term_structure_comparison.csv` | **Model**: implied volatility at the money for the same tenor. |
+| `Diff` | `OEX_term_structure_comparison.csv` | **Comparison**: model minus market. |
+| `Model_IV` | `OEX_surface_<period>.csv` | **Model**: implied volatility at each maturity and strike. |
+| `RMSE_ATM_vs_HV` | `OEX_calibration_summary.csv` | **Comparison**: the typical gap between model and market at the money across the eight tenors. |
+| `Skew_3M_IV90_minus_IV110` | `OEX_calibration_summary.csv` | **Model only**: model implied volatility at 90% moneyness minus that at 110%, at about three months. The market has no equivalent because it is flat in strike. |
+| `Market_HV_10d`, `Market_HV_180d` | `OEX_calibration_summary.csv` | **Market**: the shortest and longest tenors of the market term structure. |
+
+In the figures, the coloured surface (and the dashed lines in the term-structure plot) is the model, and the red flat sheet (and the solid lines) is the market.
+
+#### Which values to compare
+
+1. **Term structure (the main comparison).** In `OEX_term_structure_comparison.csv`, compare `Model_ATM_IV` with `Market_HV` row by row, one row per period and tenor. A `Diff` near zero means the model matches the market. This is where the fit is judged: the values agree closely everywhere except the long tenors in 2020, where `Diff` is about $-0.045$ at 180 days.
+2. **Full surface.** In each `OEX_surface_<period>.csv`, compare `Model_IV` with `Market_HV` within each maturity. Because `Market_HV` is the same at every strike, the only extra information from the model is how `Model_IV` varies across strikes (the smile), which is very small here.
+3. **One number per period.** `RMSE_ATM_vs_HV` in `OEX_calibration_summary.csv` summarises the gap from item 1.
+
+The table below puts the model and market values for the shortest and longest tenors side by side, together with the fit error and the model skew. The key under the table states what each column means and whether it is a market value, a model value, or a comparison of the two.
+
+```{r summary-fit, echo=FALSE}
+term <- read.csv(file.path(out_dir, "OEX_term_structure_comparison.csv"))
+pick <- function(d) term[term$Tenor_days == d, c("Period", "Market_HV", "Model_ATM_IV")]
+t10  <- pick(10); t180 <- pick(180)
+m <- merge(merge(summ[, c("Period", "RMSE_ATM_vs_HV", "Skew_3M_IV90_minus_IV110")],
+                 t10,  by = "Period"),
+           t180, by = "Period", suffixes = c("_10d", "_180d"))
+m <- m[match(summ$Period, m$Period), ]          # keep chronological order
+ftab <- data.frame(
+  Period = m$Period,
+  `Market 10d (%)`  = 100 * m$Market_HV_10d,
+  `Model 10d (%)`   = 100 * m$Model_ATM_IV_10d,
+  `Market 180d (%)` = 100 * m$Market_HV_180d,
+  `Model 180d (%)`  = 100 * m$Model_ATM_IV_180d,
+  `Model vs market: ATM RMSE (vol pts)` = 100 * m$RMSE_ATM_vs_HV,
+  `Model only: 3M skew (vol pts)`       = 100 * m$Skew_3M_IV90_minus_IV110,
+  check.names = FALSE)
+kable(ftab, digits = 2,
+      caption = "Market and model-implied volatility by period (shortest and longest tenors), with fit error and model skew.")
+```
+
+| Column | What it is | Type |
+|---|---|---|
+| Market 10d (%), Market 180d (%) | Average historical volatility over the period at the 10-day and 180-day tenors. Flat in strike. | **Market** |
+| Model 10d (%), Model 180d (%) | Model-implied volatility at the money (strike equal to spot) at the same two tenors. | **Model** |
+| Model vs market: ATM RMSE (vol pts) | Root-mean-square difference between the model at-the-money volatility and the market volatility, taken over all eight tenors (10 to 180 days). Smaller means a closer match. | **Comparison of model and market** |
+| Model only: 3M skew (vol pts) | Model-implied volatility at 90% moneyness minus that at 110%, at about a three-month maturity. It measures how much the model surface tilts across strikes. The market surface is flat in strike by construction, so it has no counterpart. | **Model only** |
+
+The two summary columns answer different questions. The ATM RMSE says how well the model matches the market along maturity. The skew describes the model's own shape along strike, and it cannot be compared with the market without option quotes.
+
+- **Level.** Market volatility is about 11-13% before COVID, 26-32% in 2020, 13-15% in 2021, 21-24% in 2022 and 14-16% from 2023. The tuned model follows these levels because $V_0$ and $\theta$ are fitted to them.
+- **Shape.** The market term structure slopes upward in every period except 2022, when it is inverted. The model matches both shapes: its at-the-money volatility is within 0.1 to 0.4 volatility points of the market in all periods except 2020.
+- **Where it fits worst.** In 2020 the average error is about 2 volatility points and the model undershoots the market by roughly 4.5 points at 180 days, because the very steep 2020 term structure would need a $\theta$ above the cap.
+- **Strike dimension.** The market surface has no strike dependence, but the model smile is also nearly flat: at three months, volatility at 90% moneyness exceeds that at 110% by only about 0.3 volatility points or less in every period. This follows from the expansion with the guessed $\lambda$ and $\rho$, and it is not evidence about the OEX. Real option prices would be needed to test the smile.
+
+**Bottom line.** With three tuned parameters, the model reproduces the level and the slope of the OEX historical-volatility term structure in all five regimes, including the inverted curve in 2022, and it is least accurate in the 2020 shock. Because the market side is historical volatility and not option-implied volatility, this is a check of the model's term structure, not a validation of its smile.

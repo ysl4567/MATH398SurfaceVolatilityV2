@@ -1,0 +1,60 @@
+---
+title: "Final Research Output"
+author: "Yuto Sugiyama"
+date: "Wednesday October 21, 2026"
+output:
+    pdf_document: default
+    html_document: default
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Install any missing R packages
+pkgs <- c("reticulate", "knitr", "kableExtra")
+missing <- pkgs[!pkgs %in% rownames(installed.packages())]
+if (length(missing) > 0) {
+  install.packages(missing, repos = "https://cloud.r-project.org")
+}
+
+library(knitr)
+library(kableExtra)
+library(reticulate)
+py_require(c("numpy", "pandas"))
+```
+
+```{python}
+import numpy as np
+import pandas as pd
+
+def load_npz(path):
+    d = np.load(path, allow_pickle=True)
+    return pd.DataFrame(d["data"], columns=d["columns"], index=d["index"])
+
+hv_a = load_npz("/Users/useradmin/Desktop/Files/ivol_OEX_historical_volatility_2016-01-01_to_2019-12-31.npz") #change file address as needed
+hv_b = load_npz("/Users/useradmin/Desktop/Files/ivol_OEX_historical_volatility_2020-01-01_to_2026-09-30.npz") #change file address as needed
+rates = load_npz("/Users/useradmin/Desktop/Files/ivol_interest_rates_USD_2016-01-01_to_2026-09-30.npz") #change file address as needed
+
+# Volatility: combine, parse dates, convert only the numeric columns
+hv = pd.concat([hv_a, hv_b], ignore_index=True)
+hv["date"] = pd.to_datetime(hv["date"])
+num_cols = ["price"] + [c for c in hv.columns if c.endswith("HV")]
+hv[num_cols] = hv[num_cols].astype(float)
+hv = hv[["date"] + num_cols].sort_values("date").set_index("date")
+
+# Rates
+rates["t_date"] = pd.to_datetime(rates["t_date"])
+rates["period"] = rates["period"].astype(int)
+rates["rate"] = rates["rate"].astype(float)
+
+print(hv.head())
+print(hv.tail())
+print(rates.head())
+```
+
+
+```{r}
+knitr::kable(head(py$hv, 5), digits = 4, caption = "OEX historical volatility (first 5 rows)")
+knitr::kable(tail(py$hv, 5), digits = 4, caption = "OEX historical volatility (last 5 rows)")
+knitr::kable(head(py$rates, 5), digits = 4, caption = "USD interest rates (first 5 rows)")
+```
