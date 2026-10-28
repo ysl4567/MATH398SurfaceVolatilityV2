@@ -3,8 +3,9 @@
 
 FINAL -> Core Files
 
-Run: "OEX_build_summary_pdf.py" -> Output: "output" folder & "OEX_summary_section.pdf"
-Run "OEX_vol_surface_section.Rmd" -> Output: "OEX_vol_surface_section.pdf"
+1. Run: "OEX_build_summary_pdf.py" -> Output: "output" folder & "OEX_summary_section.pdf"
+   
+2. Run "OEX_vol_surface_section.Rmd" -> Output: "OEX_vol_surface_section.pdf"
 
 
 
