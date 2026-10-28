@@ -1,5 +1,17 @@
+# FILESFINAL/OEX_project
 
-# OEX_project
+
+1. Run: "OEX_surface_comparison.py" -> Reads: The three .npx data files and "SurfaceVolatility.py" -> Outputs: "output" folder (10 files), including "OEX_standard_maturities_comparison.csv"
+
+2. Run: "OEX_build_summary_pdf.py" -> Reads: The "output" folder, calibration summary, the term-structure comparison, the standard-maturities CSV, and the two PNGs -> Output: "OEX_summary_section.pdf"
+
+3. Run: "OEX_vol_surface_section.Rmd" -> Reads: The "output" folder but only the calibration summary and the two PNGs -> Output: "OEX_vol_surface_section.pdf"
+
+
+
+
+------------------------------------------------------------
+OEX_project
 
 1. Run: "OEX_surface_comparison.py" -> Reads: The three .npz data files and SurfaceVolatility.py -> Output: The nine files in the "output" folder
 
@@ -10,7 +22,7 @@
 
 
 
-# FINAL Folder
+FINAL Folder
 
 FINAL -> Core Files
 
