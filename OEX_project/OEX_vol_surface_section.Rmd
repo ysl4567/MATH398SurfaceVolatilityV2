@@ -1,0 +1,52 @@
+## Model-implied versus market volatility surface for the OEX (maturities up to 1 year)
+
+```{r vol-surface-setup, include=FALSE}
+library(knitr)
+# Folder written by OEX_surface_comparison.py (relative to this .Rmd file)
+out_dir <- "output"
+summ <- read.csv(file.path(out_dir, "OEX_calibration_summary.csv"))
+tab <- data.frame(
+  Period               = summ$Period,
+  `HV 10d (%)`         = 100 * summ$Market_HV_10d,
+  `HV 180d (%)`        = 100 * summ$Market_HV_180d,
+  `HV 1y (%)`          = 100 * summ$Market_HV_1y,
+  `Model ATM 1y (%)`   = 100 * summ$Model_ATM_IV_1y,
+  V0                   = summ$V0,
+  kappa                = summ$kappa,
+  theta                = summ$theta,
+  `ATM RMSE (vol pts)` = 100 * summ$RMSE_ATM_vs_HV,
+  `3M skew (vol pts)`  = 100 * summ$Skew_3M_IV90_minus_IV110,
+  `1Y skew (vol pts)`  = 100 * summ$Skew_1Y_IV90_minus_IV110,
+  check.names = FALSE
+)
+```
+
+**Approach.** Option prices are computed with the stochastic-volatility perturbation expansion in `SurfaceVolatility.py` (after Diehl), and Black-Scholes is inverted to obtain the model-implied volatility surface $\sigma(K,T)$ for maturities from 10 trading days to 1 year (252 trading days). The market volatility data are the OEX historical-volatility series at 10 to 180 trading days; the supplied files contain no 1-year column, so the 252-day historical volatility is computed from the price series (sample standard deviation of daily log returns times $\sqrt{252}$, a formula that reproduces the supplied 10-, 60- and 180-day columns exactly). The "market surface" is the average historical volatility at each of the nine tenors, over the same dates for every tenor, and is flat in strike. The comparison is therefore a comparison of term structures; it cannot test the smile produced by the model. For each period, $V_0$, $\theta$ and $\kappa$ are tuned so that the model's at-the-money implied volatility follows the nine-point historical-volatility term structure. The vol-of-vol ($0.8$) and spot-vol correlation ($-0.7$) are guessed rather than fitted, interest rates are the period-average USD curve at each maturity, and no dividend yield is used.
+
+The sample (2016-01-04 to 2026-09-30) is split into five regimes according to the level and shape of historical volatility: pre-COVID, the COVID shock (2020), the recovery (2021), the 2022 tightening bear market, and the normalisation of 2023 to September 2026. Because 252-day historical volatility first exists on 2017-01-03, the pre-COVID averages cover 2017-2019.
+
+```{r vol-surface-table, echo=FALSE}
+kable(tab, digits = 2,
+      caption = "Market historical vol, fitted parameters and fit quality by period (including the 1-year maturity).")
+```
+
+```{r vol-surface-fig1, echo=FALSE, out.width="100%", fig.cap="Model-implied surface (coloured) versus the market historical-volatility surface (red, flat in strike), by period, for maturities up to 1 year."}
+knitr::include_graphics(file.path(out_dir, "OEX_surfaces_model_vs_market.png"))
+```
+
+```{r vol-surface-fig2, echo=FALSE, out.width="100%", fig.cap="Left: market historical-vol term structure (solid) and model at-the-money implied vol (dashed), 10 to 252 trading days. Middle and right: model smile at about three months and at one year (dotted lines: market historical vol)."}
+knitr::include_graphics(file.path(out_dir, "OEX_term_structure_and_smiles.png"))
+```
+
+**Results.** The volatility level differs sharply across regimes. Average historical volatility is about 11-13% before COVID, 26-32% in 2020, 13-19% in 2021, 19-25% in 2022 and 14-17% from 2023. The shape of the term structure also changes. It slopes upward in the pre-COVID and normalisation periods, is humped in 2020 (peaking at 31.7% at 180 days and easing to 29.0% at one year), and is inverted in 2022 (24.3% at 10 days, 19.5% at one year), which is typical of a stressed market. In 2021 the curve steepens sharply at the last tenor (15.2% at 180 days, 19.5% at one year) because the 252-day window still reaches back into the high-volatility second half of 2020; historical volatility looks backward, so this is not a forecast of future volatility.
+
+Out to 180 days the model reproduces the market term structure to within 0.8 volatility points in every period except 2020, including the inverted curve in 2022. The 1-year point is harder to fit. The model's one-year at-the-money volatility is 0.1 points below the market in 2022 and 0.5 below in the pre-COVID period, but 2.0 points below in 2023-2026, 4.3 below in 2021 and 4.8 below in 2020. The overall at-the-money RMSE across the nine tenors is 0.20 (pre-COVID), 3.13 (2020), 1.52 (2021), 0.20 (2022) and 0.72 (2023-2026) volatility points, compared with 0.09 to 0.40 points for the eight tenors up to 180 days outside 2020. The extra tenor therefore worsens the fit wherever the curve bends away from the smooth shape the model produces; in 2020 and 2021 the long-run level $\theta$ is also limited by the cap of 1.6 times the longest-tenor historical volatility.
+
+The model smile is nearly flat. At three months, implied volatility at 90% moneyness exceeds that at 110% by 0.3 volatility points or less; at one year the gap is larger, 0.4 to 1.0 points, but still far smaller than the pronounced skew usually seen in index options. This reflects the expansion as implemented with the guessed vol-of-vol and correlation, and should not be read as a finding about the OEX.
+
+**Limitations.**
+
+- Historical (realised) volatility is a proxy for the market surface. Implied volatility is usually higher than realised volatility, so a fit to historical volatility will understate it. The 1-year market value is a trailing 252-day realised volatility, not a one-year-ahead quantity.
+- Without option quotes, only the term structure can be compared; the strike dimension of the model surface is not validated.
+- The expansion becomes unreliable far from the money, so the surfaces are limited to strikes within $\pm 10\%$ of spot, and further to $|\ln(K/S_0)| \le 2.5\,\sigma\sqrt{T}$.
+- $\lambda$ and $\rho$ are the same guesses in all periods, so the fitted $V_0$, $\kappa$ and $\theta$ should be read as descriptive.
