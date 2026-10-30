@@ -9,6 +9,11 @@ from mpl_toolkits.mplot3d import Axes3D
 import pandas as pd
 
 
+# Finite-difference step for derivative approximations in price_expansion.
+# Unified to 0.01 to match OEX_surface_comparison.py.
+H = 0.01
+
+
 # ============================================================
 # PART (A): STOCHASTIC VOLATILITY MODEL AND OPTION PRICING
 # ------------------------------------------------------------
@@ -175,7 +180,7 @@ def price_expansion(x, psi, K, r, T, coeffs):
 
     a0, a1, a2, b0, b2 = coeffs
     # h = 1e-4
-    h = 0.5
+    h = H
 
     P0 = BS_put(x, psi, K, r, T)
 
