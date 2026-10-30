@@ -65,14 +65,75 @@ WING_C = 2.5   # keep only |ln(K/S0)| <= WING_C * sigma * sqrt(T); beyond that t
 
 # ------------------------------------------------------------------ data
 def load_npz(path):
+    """Load an OEX .npz into a DataFrame.
+
+    ``np.load(path)`` is used without ``allow_pickle``. Real OEX ``.npz`` files
+    store ``data`` as a pickled object-dtype array (mixed int/str/float columns),
+    so ``np.load`` without ``allow_pickle=True`` raises
+    ``ValueError: Object arrays cannot be loaded when allow_pickle=False`` when
+    ``d["data"]`` is accessed. Per the security hard constraint, ``allow_pickle``
+    must stay off; re-save real ``.npz`` files with typed (non-object) columns
+    before loading them here.
+    """
     d = np.load(path)
     return pd.DataFrame(d["data"], columns=d["columns"], index=d["index"])
 
-def find(prefix):
-    return sorted(os.path.join(DATA_DIR, f) for f in os.listdir(DATA_DIR)
-                  if f.startswith(prefix) and f.endswith(".npz"))
 
-if __name__ == "__main__":
+def find(prefix):
+    """Return sorted .npz paths matching ``prefix`` under ``DATA_DIR``.
+
+    Raises:
+        FileNotFoundError: if no matching file exists (instead of ``IndexError``
+            when the caller indexes ``find()[0]``).
+    """
+    matches = sorted(os.path.join(DATA_DIR, f) for f in os.listdir(DATA_DIR)
+                     if f.startswith(prefix) and f.endswith(".npz"))
+    if not matches:
+        raise FileNotFoundError(
+            f"No .npz file matching prefix {prefix!r} found in {DATA_DIR!r}")
+    return matches
+
+
+# ------------------------------------------------------------------ model
+def price_expansion_h(x, psi, K, r, T, coeffs, h=H):
+    """Same expansion as sv.price_expansion, but with a configurable step h."""
+    a0, a1, a2, b0, b2 = coeffs
+    P = lambda xx: sv.BS_put(xx, psi, K, r, T)
+    P0 = P(x)
+    d1 = (P(x + h) - P(x - h)) / (2 * h)
+    d2 = (P(x + h) - 2 * P0 + P(x - h)) / h**2
+    d3 = (P(x + 2*h) - 2*P(x + h) + 2*P(x - h) - P(x - 2*h)) / (2 * h**3)
+    d4 = (P(x + 2*h) - 4*P(x + h) + 6*P0 - 4*P(x - h) + P(x - 2*h)) / h**4
+    return P0 + a0*d1 + a1*d2 + a2*d3 + b0*d2 + b2*d4
+
+
+def model_surface(S0, r_of_T, V0, kappa, theta, lam, rho, Ts, Ks_rel):
+    """IV[i, j] for maturity Ts[i], strike Ks_rel[j]*S0.
+    Coefficients depend on T only, so they are computed once per maturity."""
+    x0 = np.log(S0)
+    iv = np.full((len(Ts), len(Ks_rel)), np.nan)
+    for i, T in enumerate(Ts):
+        psi, a0, a1, a2, b0, b2 = sv.compute_coefficients(V0, kappa, theta, lam, rho, T)
+        r = r_of_T[i]
+        for j, m in enumerate(Ks_rel):
+            K = m * S0
+            p = price_expansion_h(x0, psi, K, r, T, (a0, a1, a2, b0, b2))
+            iv[i, j] = sv.implied_vol_put(p, S0, K, r, T)
+    return iv
+
+
+def atm_curve(S0, tenors, r_tenor, V0, kappa, theta, lam, rho):
+    """ATM IV for each (T, r) pair; ``tenors`` are the maturities to price."""
+    x0 = np.log(S0)
+    out = []
+    for T, r in zip(tenors, r_tenor):
+        psi, a0, a1, a2, b0, b2 = sv.compute_coefficients(V0, kappa, theta, lam, rho, T)
+        p = price_expansion_h(x0, psi, S0, r, T, (a0, a1, a2, b0, b2))
+        out.append(sv.implied_vol_put(p, S0, S0, r, T))
+    return np.array(out)
+
+
+def main():
     hv = pd.concat([load_npz(p) for p in find("ivol_OEX_historical_volatility")],
                    ignore_index=True)
     hv["date"] = pd.to_datetime(hv["date"])
@@ -98,41 +159,6 @@ if __name__ == "__main__":
     T_grid = np.sort(np.concatenate([T_tenor, (T_tenor[:-1] + T_tenor[1:]) / 2]))
     tenor_idx = [int(np.argmin(abs(T_grid - t))) for t in T_tenor]
     
-    # ------------------------------------------------------------------ model
-    def price_expansion_h(x, psi, K, r, T, coeffs, h=H):
-        """Same expansion as sv.price_expansion, but with a configurable step h."""
-        a0, a1, a2, b0, b2 = coeffs
-        P = lambda xx: sv.BS_put(xx, psi, K, r, T)
-        P0 = P(x)
-        d1 = (P(x + h) - P(x - h)) / (2 * h)
-        d2 = (P(x + h) - 2 * P0 + P(x - h)) / h**2
-        d3 = (P(x + 2*h) - 2*P(x + h) + 2*P(x - h) - P(x - 2*h)) / (2 * h**3)
-        d4 = (P(x + 2*h) - 4*P(x + h) + 6*P0 - 4*P(x - h) + P(x - 2*h)) / h**4
-        return P0 + a0*d1 + a1*d2 + a2*d3 + b0*d2 + b2*d4
-    
-    def model_surface(S0, r_of_T, V0, kappa, theta, lam, rho, Ts, Ks_rel):
-        """IV[i, j] for maturity Ts[i], strike Ks_rel[j]*S0.
-        Coefficients depend on T only, so they are computed once per maturity."""
-        x0 = np.log(S0)
-        iv = np.full((len(Ts), len(Ks_rel)), np.nan)
-        for i, T in enumerate(Ts):
-            psi, a0, a1, a2, b0, b2 = sv.compute_coefficients(V0, kappa, theta, lam, rho, T)
-            r = r_of_T[i]
-            for j, m in enumerate(Ks_rel):
-                K = m * S0
-                p = price_expansion_h(x0, psi, K, r, T, (a0, a1, a2, b0, b2))
-                iv[i, j] = sv.implied_vol_put(p, S0, K, r, T)
-        return iv
-    
-    def atm_curve(S0, r_tenor, V0, kappa, theta, lam, rho):
-        x0 = np.log(S0)
-        out = []
-        for T, r in zip(T_tenor, r_tenor):
-            psi, a0, a1, a2, b0, b2 = sv.compute_coefficients(V0, kappa, theta, lam, rho, T)
-            p = price_expansion_h(x0, psi, S0, r, T, (a0, a1, a2, b0, b2))
-            out.append(sv.implied_vol_put(p, S0, S0, r, T))
-        return np.array(out)
-    
     # ------------------------------------------------------------------ run
     results, summary_rows, term_rows = {}, [], []
     for name, (d0, d1) in PERIODS.items():
@@ -151,7 +177,7 @@ if __name__ == "__main__":
         lo = float(mkt[-1])
         def resid(p):
             V0, theta, kappa = p
-            m = atm_curve(S0, r_tenor, V0, kappa, theta, lam, rho)
+            m = atm_curve(S0, T_tenor, r_tenor, V0, kappa, theta, lam, rho)
             return np.where(np.isnan(m), 1.0, m - mkt)
         fit = least_squares(resid, x0=[mkt[0], 1.2 * lo, 2.0],
                             bounds=([0.02, lo, 0.1], [0.8, 1.6 * lo, 10.0]))
@@ -254,3 +280,7 @@ if __name__ == "__main__":
     print()
     print(pd.DataFrame(term_rows).round(4).to_string(index=False))
     print("\nSaved to", OUT_DIR)
+
+
+if __name__ == "__main__":
+    main()
