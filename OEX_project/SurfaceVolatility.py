@@ -388,7 +388,7 @@ def build_surface(fx):
 # ============================================================
 
 # Relative Volatiltiy Surface
-def save_surface_data(K, T, vol, name):
+def save_surface_data(K, T, vol, name, output_dir=None):
 
     rows = []
 
@@ -404,7 +404,9 @@ def save_surface_data(K, T, vol, name):
 
     df = pd.DataFrame(rows)
 
-    output_dir = os.path.expanduser("~/Desktop")
+    if output_dir is None:
+        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+    os.makedirs(output_dir, exist_ok=True)
     filename = os.path.join(output_dir, f"{name}_surface_values.csv")
 
     df.to_csv(filename, index=False)
@@ -412,7 +414,7 @@ def save_surface_data(K, T, vol, name):
     print("Saved numerical surface:", filename)
 
 # Absolute Volatility Surface
-def save_absolute_surface_data(K, T, vol, name):
+def save_absolute_surface_data(K, T, vol, name, output_dir=None):
 
     rows = []
 
@@ -428,7 +430,9 @@ def save_absolute_surface_data(K, T, vol, name):
 
     df = pd.DataFrame(rows)
 
-    output_dir = os.path.expanduser("~/Desktop")
+    if output_dir is None:
+        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+    os.makedirs(output_dir, exist_ok=True)
     filename = os.path.join(output_dir, f"{name}_absolute_surface_values.csv")
 
     df.to_csv(filename, index=False)
@@ -453,7 +457,7 @@ def save_absolute_surface_data(K, T, vol, name):
 # price and produces smoother volatility surfaces.
 # ============================================================
 # Relative Volatility Surface
-def plot_surface(K, T, vol, name, S0):
+def plot_surface(K, T, vol, name, S0, output_dir=None):
 
     if np.all(np.isnan(vol)):
         vol[:] = 0.2
@@ -473,7 +477,9 @@ def plot_surface(K, T, vol, name, S0):
     ax.set_zlabel("Implied Volatility")
     ax.set_title(name + " Log-Moneyness Surface")
 
-    output_dir = os.path.expanduser("~/Desktop")
+    if output_dir is None:
+        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+    os.makedirs(output_dir, exist_ok=True)
     filename = os.path.join(output_dir, f"{name}_log_moneyness_surface.png")
 
     plt.savefig(filename, dpi=150)
@@ -483,7 +489,7 @@ def plot_surface(K, T, vol, name, S0):
 
 # Absolute Volatility Surface
 
-def plot_surface_absolute(K, T, vol, name):
+def plot_surface_absolute(K, T, vol, name, output_dir=None):
 
     if np.all(np.isnan(vol)):
         vol[:] = 0.2
@@ -501,7 +507,9 @@ def plot_surface_absolute(K, T, vol, name):
     ax.set_zlabel("Implied Volatility")
     ax.set_title(name + " Absolute Volatility Surface")
 
-    output_dir = os.path.expanduser("~/Desktop")
+    if output_dir is None:
+        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+    os.makedirs(output_dir, exist_ok=True)
     filename = os.path.join(output_dir, f"{name}_absolute_vol_surface.png")
 
     plt.savefig(filename, dpi=150)
@@ -560,6 +568,8 @@ fx_data = {
 
 if __name__ == "__main__":
 
+    output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+
     for fx_name, fx in fx_data.items():
 
         print("Building implied volatility surface for", fx_name)
@@ -567,13 +577,13 @@ if __name__ == "__main__":
         K, T, vol = build_surface(fx)
 
         # Log-moneyness surface
-        plot_surface(K, T, vol, fx_name, fx["S0"])
+        plot_surface(K, T, vol, fx_name, fx["S0"], output_dir=output_dir)
 
         # Absolute strike surface
-        plot_surface_absolute(K, T, vol, fx_name)
+        plot_surface_absolute(K, T, vol, fx_name, output_dir=output_dir)
 
-        save_surface_data(K, T, vol, fx_name)
-        save_absolute_surface_data(K, T, vol, fx_name)
+        save_surface_data(K, T, vol, fx_name, output_dir=output_dir)
+        save_absolute_surface_data(K, T, vol, fx_name, output_dir=output_dir)
         
 
     print("Done.")
