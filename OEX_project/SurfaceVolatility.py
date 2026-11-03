@@ -1,4 +1,6 @@
 import os
+from typing import Callable, Optional
+
 import numpy as np
 from math import exp, log, sqrt
 from scipy.stats import norm
@@ -65,7 +67,18 @@ usd_aud_rates = {
 # Eq. (6): deterministic volatility backbone v_{0,t}
 # ============================================================
 
-def v0(t, V0, kappa, theta):
+def v0(t: float, V0: float, kappa: float, theta: float) -> float:
+    """Compute the deterministic volatility backbone v_{0,t}.
+
+    Args:
+        t: Time to evaluate at.
+        V0: Initial variance level.
+        kappa: Mean-reversion speed.
+        theta: Long-run variance level.
+
+    Returns:
+        The deterministic volatility backbone value at time t.
+    """
     return theta + (V0 - theta) * np.exp(-kappa * t)
 
 
@@ -73,7 +86,19 @@ def v0(t, V0, kappa, theta):
 # Eq. (15): single-layer omega operator
 # ============================================================
 
-def omega_1(n, l_func, kappa, t, T):
+def omega_1(n: int, l_func: Callable, kappa: float, t: float, T: float) -> float:
+    """Compute the single-layer omega operator (Eq. 15).
+
+    Args:
+        n: Operator layer index.
+        l_func: Lambda function defining the integrand weight.
+        kappa: Mean-reversion speed.
+        t: Lower integration bound / start time.
+        T: Upper integration bound / maturity.
+
+    Returns:
+        The value of the single-layer omega integral.
+    """
     integrand = lambda u: np.exp(-n * kappa * (u - t)) * l_func(u)
     return np.exp(n * kappa * t) * quad(integrand, t, T)[0]
 
@@ -82,7 +107,20 @@ def omega_1(n, l_func, kappa, t, T):
 # Eq. (16): two-layer omega operator
 # ============================================================
 
-def omega_2(n1, l1, n2, l2, kappa, T):
+def omega_2(n1: int, l1: Callable, n2: int, l2: Callable, kappa: float, T: float) -> float:
+    """Compute the two-layer omega operator (Eq. 16).
+
+    Args:
+        n1: First operator layer index.
+        l1: First weight lambda function.
+        n2: Second operator layer index.
+        l2: Second weight lambda function.
+        kappa: Mean-reversion speed.
+        T: Upper integration bound / maturity.
+
+    Returns:
+        The value of the two-layer omega integral.
+    """
     integrand = lambda s: (
         np.exp(n1 * kappa * s)
         * l1(s)
@@ -95,7 +133,22 @@ def omega_2(n1, l1, n2, l2, kappa, T):
 # Eq. (17): three-layer omega operator
 # ============================================================
 
-def omega_3(n1, l1, n2, l2, n3, l3, kappa, T):
+def omega_3(n1: int, l1: Callable, n2: int, l2: Callable, n3: int, l3: Callable, kappa: float, T: float) -> float:
+    """Compute the three-layer omega operator (Eq. 17).
+
+    Args:
+        n1: First operator layer index.
+        l1: First weight lambda function.
+        n2: Second operator layer index.
+        l2: Second weight lambda function.
+        n3: Third operator layer index.
+        l3: Third weight lambda function.
+        kappa: Mean-reversion speed.
+        T: Upper integration bound / maturity.
+
+    Returns:
+        The value of the three-layer omega integral.
+    """
     integrand = lambda s: (
         np.exp(n1 * kappa * s)
         * l1(s)
@@ -108,7 +161,20 @@ def omega_3(n1, l1, n2, l2, n3, l3, kappa, T):
 # Eqs. (7)–(9): coefficient construction
 # ============================================================
 
-def compute_coefficients(V0, kappa, theta, lam, rho, T):
+def compute_coefficients(V0: float, kappa: float, theta: float, lam: float, rho: float, T: float) -> tuple:
+    """Construct the perturbation expansion coefficients (Eqs. 7–9).
+
+    Args:
+        V0: Initial variance level.
+        kappa: Mean-reversion speed.
+        theta: Long-run variance level.
+        lam: Volatility-of-variance parameter.
+        rho: Correlation between asset and variance.
+        T: Option maturity.
+
+    Returns:
+        Tuple ``(psi, a0, a1, a2, b0, b2)`` of expansion coefficients.
+    """
 
     psi = omega_1(
         0,
@@ -161,7 +227,19 @@ def compute_coefficients(V0, kappa, theta, lam, rho, T):
 # Eq. (10): Black–Scholes put (variance input)
 # ============================================================
 
-def BS_put(x, y, K, r, T):
+def BS_put(x: float, y: float, K: float, r: float, T: float) -> float:
+    """Black–Scholes put price with variance input (Eq. 10).
+
+    Args:
+        x: Log-spot price log(S0).
+        y: Variance level (used to derive volatility sqrt(y/T)).
+        K: Option strike price.
+        r: Risk-free rate (domestic minus foreign).
+        T: Option maturity.
+
+    Returns:
+        The Black–Scholes European put price.
+    """
 
     S0 = np.exp(x)
     vol = sqrt(y / T)
@@ -176,7 +254,20 @@ def BS_put(x, y, K, r, T):
 # Eq. (5): final price expansion
 # ============================================================
 
-def price_expansion(x, psi, K, r, T, coeffs):
+def price_expansion(x: float, psi: float, K: float, r: float, T: float, coeffs: tuple) -> float:
+    """Final stochastic volatility price expansion (Eq. 5).
+
+    Args:
+        x: Log-spot price log(S0).
+        psi: Deterministic variance backbone coefficient.
+        K: Option strike price.
+        r: Risk-free rate (domestic minus foreign).
+        T: Option maturity.
+        coeffs: Tuple ``(a0, a1, a2, b0, b2)`` of expansion coefficients.
+
+    Returns:
+        The model option price from the perturbation expansion.
+    """
 
     a0, a1, a2, b0, b2 = coeffs
     # h = 1e-4
@@ -231,7 +322,22 @@ def price_expansion(x, psi, K, r, T, coeffs):
 # volatility σ.
 # ============================================================
 
-def BS_put_from_vol(S0, K, r, T, sigma):
+def BS_put_from_vol(S0: float, K: float, r: float, T: float, sigma: float) -> float:
+    """Black–Scholes put price with volatility input (closed form).
+
+    Evaluates the Black–Scholes European put pricing formula given an
+    explicit volatility parameter σ (Black & Scholes, 1973).
+
+    Args:
+        S0: Current spot price of the underlying.
+        K: Option strike price.
+        r: Risk-free rate (domestic minus foreign).
+        T: Option maturity.
+        sigma: Volatility σ of the underlying.
+
+    Returns:
+        The Black–Scholes European put price.
+    """
 
     d1 = (np.log(S0 / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)
@@ -277,12 +383,27 @@ def BS_put_from_vol(S0, K, r, T, sigma):
 # standard representation used in options markets.
 # ============================================================
 
-def implied_vol_put(price, S0, K, r, T):
+def implied_vol_put(price: float, S0: float, K: float, r: float, T: float) -> float:
+    """Invert Black–Scholes to solve for implied volatility of a put.
+
+    Uses Brent's method to find σ such that
+    ``BS_put_from_vol(S0, K, r, T, sigma) - price = 0``.
+
+    Args:
+        price: Observed option price to invert.
+        S0: Current spot price of the underlying.
+        K: Option strike price.
+        r: Risk-free rate (domestic minus foreign).
+        T: Option maturity.
+
+    Returns:
+        The implied volatility σ, or ``np.nan`` if no solution is found.
+    """
 
     if price <= 0:
         return np.nan
 
-    def f(sigma):
+    def f(sigma: float) -> float:
         return BS_put_from_vol(S0, K, r, T, sigma) - price
 
     sigma_low = 1e-6
@@ -336,7 +457,21 @@ def implied_vol_put(price, S0, K, r, T):
 # smile) and maturity (the volatility term structure).
 # ============================================================
 
-def build_surface(fx):
+def build_surface(fx: dict) -> tuple:
+    """Build the implied volatility surface σ(K, T) over a strike/maturity grid.
+
+    For each grid point, computes the theoretical option price via the
+    perturbation expansion (Part A) and inverts Black–Scholes to obtain
+    the implied volatility.
+
+    Args:
+        fx: FX data dictionary with keys ``S0``, ``V0``, ``params`` and
+            ``rates``.
+
+    Returns:
+        Tuple ``(K_grid, T_grid, vol_grid)`` of strike grid, maturity grid,
+        and implied volatility surface.
+    """
 
     S0 = fx["S0"]
     x0 = np.log(S0)
@@ -393,7 +528,23 @@ def build_surface(fx):
 # ============================================================
 
 # Relative Volatiltiy Surface
-def save_surface_data(K, T, vol, name, output_dir=None):
+def save_surface_data(K: np.ndarray, T: np.ndarray, vol: np.ndarray, name: str, output_dir: Optional[str] = None) -> None:
+    """Save the relative implied volatility surface to a CSV file.
+
+    Each row represents a point ``σ(K, T)`` with columns Pair,
+    Maturity_Years, Strike, Implied_Volatility.
+
+    Args:
+        K: Strike grid array.
+        T: Maturity grid array.
+        vol: Implied volatility surface array.
+        name: FX currency pair name used in output filename.
+        output_dir: Directory to write the CSV into. Defaults to an
+            ``output`` folder next to this module.
+
+    Returns:
+        None.
+    """
 
     rows = []
 
@@ -419,7 +570,23 @@ def save_surface_data(K, T, vol, name, output_dir=None):
     print("Saved numerical surface:", filename)
 
 # Absolute Volatility Surface
-def save_absolute_surface_data(K, T, vol, name, output_dir=None):
+def save_absolute_surface_data(K: np.ndarray, T: np.ndarray, vol: np.ndarray, name: str, output_dir: Optional[str] = None) -> None:
+    """Save the absolute implied volatility surface to a CSV file.
+
+    Each row represents a point ``σ(K, T)`` with columns Pair,
+    Maturity_Years, Strike_Price, Implied_Volatility.
+
+    Args:
+        K: Strike grid array.
+        T: Maturity grid array.
+        vol: Implied volatility surface array.
+        name: FX currency pair name used in output filename.
+        output_dir: Directory to write the CSV into. Defaults to an
+            ``output`` folder next to this module.
+
+    Returns:
+        None.
+    """
 
     rows = []
 
@@ -462,7 +629,24 @@ def save_absolute_surface_data(K, T, vol, name, output_dir=None):
 # price and produces smoother volatility surfaces.
 # ============================================================
 # Relative Volatility Surface
-def plot_surface(K, T, vol, name, S0, output_dir=None):
+def plot_surface(K: np.ndarray, T: np.ndarray, vol: np.ndarray, name: str, S0: float, output_dir: Optional[str] = None) -> None:
+    """Visualize the implied volatility surface σ(K, T) as a 3D plot.
+
+    The x-axis is log-moneyness ``log(K / S0)``, the y-axis is maturity T,
+    and the z-axis is implied volatility σ.
+
+    Args:
+        K: Strike grid array.
+        T: Maturity grid array.
+        vol: Implied volatility surface array.
+        name: FX currency pair name used in title and filename.
+        S0: Current spot price of the underlying (for log-moneyness).
+        output_dir: Directory to write the figure into. Defaults to an
+            ``output`` folder next to this module.
+
+    Returns:
+        None.
+    """
 
     if np.all(np.isnan(vol)):
         vol[:] = 0.2
@@ -494,7 +678,23 @@ def plot_surface(K, T, vol, name, S0, output_dir=None):
 
 # Absolute Volatility Surface
 
-def plot_surface_absolute(K, T, vol, name, output_dir=None):
+def plot_surface_absolute(K: np.ndarray, T: np.ndarray, vol: np.ndarray, name: str, output_dir: Optional[str] = None) -> None:
+    """Visualize the absolute implied volatility surface as a 3D plot.
+
+    The x-axis is strike price K, the y-axis is maturity T, and the
+    z-axis is implied volatility σ.
+
+    Args:
+        K: Strike grid array.
+        T: Maturity grid array.
+        vol: Implied volatility surface array.
+        name: FX currency pair name used in title and filename.
+        output_dir: Directory to write the figure into. Defaults to an
+            ``output`` folder next to this module.
+
+    Returns:
+        None.
+    """
 
     if np.all(np.isnan(vol)):
         vol[:] = 0.2
