@@ -23,6 +23,7 @@ Usage:  python OEX_surface_comparison.py [DATA_DIR] [OUT_DIR]
 SurfaceVolatility.py must sit next to this script.
 """
 import os, sys, re
+
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -64,7 +65,7 @@ WING_C = 2.5   # keep only |ln(K/S0)| <= WING_C * sigma * sqrt(T); beyond that t
                # expansion price error swamps the (tiny) option value and IV is meaningless
 
 # ------------------------------------------------------------------ data
-def load_npz(path):
+def load_npz(path: str) -> pd.DataFrame:
     """Load an OEX .npz into a DataFrame.
 
     ``np.load(path)`` is used without ``allow_pickle`` (security hard
@@ -74,6 +75,17 @@ def load_npz(path):
     and ``index``. This function reconstructs the 2-D array by column-stacking
     those typed arrays (one-time data migration: see the re-saved
     ``ivol_OEX_historical_volatility_*.npz``).
+
+    Args:
+        path: Filesystem path to the migrated .npz archive.
+
+    Returns:
+        DataFrame reconstructed from the typed ``data_<col>`` arrays, with
+        ``columns`` and ``index`` restored from the archive.
+
+    Raises:
+        KeyError: if the archive lacks ``columns``, ``index``, or any
+            ``data_<col>`` entry.
     """
     d = np.load(path)
     columns = d["columns"]
@@ -84,8 +96,14 @@ def load_npz(path):
     return pd.DataFrame(data, columns=columns, index=index)
 
 
-def find(prefix):
+def find(prefix: str) -> list[str]:
     """Return sorted .npz paths matching ``prefix`` under ``DATA_DIR``.
+
+    Args:
+        prefix: Filename prefix to match (e.g. ``"ivol_OEX_historical_volatility"``).
+
+    Returns:
+        Sorted list of .npz file paths under ``DATA_DIR`` matching the prefix.
 
     Raises:
         FileNotFoundError: if no matching file exists (instead of ``IndexError``
@@ -100,8 +118,22 @@ def find(prefix):
 
 
 # ------------------------------------------------------------------ model
-def price_expansion_h(x, psi, K, r, T, coeffs, h=H):
-    """Same expansion as sv.price_expansion, but with a configurable step h."""
+def price_expansion_h(x: float, psi: float, K: float, r: float, T: float,
+                      coeffs: tuple, h: float = H) -> float:
+    """Same expansion as sv.price_expansion, but with a configurable step h.
+
+    Args:
+        x: Log-spot price ``log(S0)``.
+        psi: Deterministic variance backbone coefficient.
+        K: Option strike price.
+        r: Risk-free rate (domestic minus foreign).
+        T: Option maturity.
+        coeffs: Tuple ``(a0, a1, a2, b0, b2)`` of expansion coefficients.
+        h: Finite-difference step (defaults to module-level ``H``).
+
+    Returns:
+        Model option price from the perturbation expansion.
+    """
     a0, a1, a2, b0, b2 = coeffs
     P = lambda xx: sv.BS_put(xx, psi, K, r, T)
     P0 = P(x)
@@ -112,9 +144,28 @@ def price_expansion_h(x, psi, K, r, T, coeffs, h=H):
     return P0 + a0*d1 + a1*d2 + a2*d3 + b0*d2 + b2*d4
 
 
-def model_surface(S0, r_of_T, V0, kappa, theta, lam, rho, Ts, Ks_rel):
+def model_surface(S0: float, r_of_T: np.ndarray, V0: float, kappa: float,
+                  theta: float, lam: float, rho: float, Ts: np.ndarray,
+                  Ks_rel: np.ndarray) -> np.ndarray:
     """IV[i, j] for maturity Ts[i], strike Ks_rel[j]*S0.
-    Coefficients depend on T only, so they are computed once per maturity."""
+
+    Coefficients depend on T only, so they are computed once per maturity.
+
+    Args:
+        S0: Current spot price of the underlying.
+        r_of_T: Risk-free rates aligned with ``Ts`` (one rate per maturity).
+        V0: Initial variance level.
+        kappa: Mean-reversion speed.
+        theta: Long-run variance level.
+        lam: Volatility-of-variance parameter.
+        rho: Correlation between asset and variance.
+        Ts: Array of maturities.
+        Ks_rel: Array of relative strikes K/S0.
+
+    Returns:
+        2-D array ``iv[i, j]`` of implied volatilities with shape
+        ``(len(Ts), len(Ks_rel))``; NaN where the inversion failed.
+    """
     x0 = np.log(S0)
     iv = np.full((len(Ts), len(Ks_rel)), np.nan)
     for i, T in enumerate(Ts):
@@ -127,8 +178,23 @@ def model_surface(S0, r_of_T, V0, kappa, theta, lam, rho, Ts, Ks_rel):
     return iv
 
 
-def atm_curve(S0, tenors, r_tenor, V0, kappa, theta, lam, rho):
-    """ATM IV for each (T, r) pair; ``tenors`` are the maturities to price."""
+def atm_curve(S0: float, tenors: np.ndarray, r_tenor: np.ndarray, V0: float,
+              kappa: float, theta: float, lam: float, rho: float) -> np.ndarray:
+    """ATM IV for each (T, r) pair; ``tenors`` are the maturities to price.
+
+    Args:
+        S0: Current spot price of the underlying.
+        tenors: Array of maturities to price.
+        r_tenor: Array of risk-free rates aligned with ``tenors``.
+        V0: Initial variance level.
+        kappa: Mean-reversion speed.
+        theta: Long-run variance level.
+        lam: Volatility-of-variance parameter.
+        rho: Correlation between asset and variance.
+
+    Returns:
+        1-D array of ATM implied volatilities, one per (T, r) pair.
+    """
     x0 = np.log(S0)
     out = []
     for T, r in zip(tenors, r_tenor):
