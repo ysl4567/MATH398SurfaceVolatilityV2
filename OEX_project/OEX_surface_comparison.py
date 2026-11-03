@@ -22,16 +22,19 @@ Usage:  python OEX_surface_comparison.py [DATA_DIR] [OUT_DIR]
   OUT_DIR  : folder for figures / CSVs             (default: ./output)
 SurfaceVolatility.py must sit next to this script.
 """
-import os, sys, re
+import os
+import re
+import sys
+import warnings
 
+import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from scipy.optimize import least_squares
-
 import SurfaceVolatility as sv
+from scipy.optimize import least_squares
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = sys.argv[1] if len(sys.argv) > 1 else HERE
@@ -234,6 +237,9 @@ def main():
     results, summary_rows, term_rows = {}, [], []
     for name, (d0, d1) in PERIODS.items():
         sub = hv.loc[d0:d1].dropna(subset=hv_cols)           # common sample: every tenor averaged over the same dates
+        if sub.empty:
+            warnings.warn(f"Skipping {name}: no data for {d0} to {d1}")
+            continue
         mkt = sub[hv_cols].mean().values                      # market (HV) term structure
         S0 = float(sub["price"].iloc[-1])                     # period-end spot
         curve = (rates[(rates.t_date >= d0) & (rates.t_date <= d1)]

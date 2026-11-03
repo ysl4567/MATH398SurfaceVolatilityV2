@@ -1,15 +1,13 @@
 import os
-from typing import Callable, Optional
+from collections.abc import Callable
+from math import sqrt
 
+import matplotlib.pyplot as plt
 import numpy as np
-from math import exp, log, sqrt
-from scipy.stats import norm
+import pandas as pd
 from scipy.integrate import quad
 from scipy.optimize import brentq
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import pandas as pd
-
+from scipy.stats import norm
 
 # Finite-difference step for derivative approximations in price_expansion.
 # Unified to 0.01 to match OEX_surface_comparison.py.
@@ -528,7 +526,7 @@ def build_surface(fx: dict) -> tuple:
 # ============================================================
 
 # Relative Volatiltiy Surface
-def save_surface_data(K: np.ndarray, T: np.ndarray, vol: np.ndarray, name: str, output_dir: Optional[str] = None) -> None:
+def save_surface_data(K: np.ndarray, T: np.ndarray, vol: np.ndarray, name: str, output_dir: str | None = None) -> None:
     """Save the relative implied volatility surface to a CSV file.
 
     Each row represents a point ``σ(K, T)`` with columns Pair,
@@ -570,7 +568,7 @@ def save_surface_data(K: np.ndarray, T: np.ndarray, vol: np.ndarray, name: str, 
     print("Saved numerical surface:", filename)
 
 # Absolute Volatility Surface
-def save_absolute_surface_data(K: np.ndarray, T: np.ndarray, vol: np.ndarray, name: str, output_dir: Optional[str] = None) -> None:
+def save_absolute_surface_data(K: np.ndarray, T: np.ndarray, vol: np.ndarray, name: str, output_dir: str | None = None) -> None:
     """Save the absolute implied volatility surface to a CSV file.
 
     Each row represents a point ``σ(K, T)`` with columns Pair,
@@ -629,7 +627,7 @@ def save_absolute_surface_data(K: np.ndarray, T: np.ndarray, vol: np.ndarray, na
 # price and produces smoother volatility surfaces.
 # ============================================================
 # Relative Volatility Surface
-def plot_surface(K: np.ndarray, T: np.ndarray, vol: np.ndarray, name: str, S0: float, output_dir: Optional[str] = None) -> None:
+def plot_surface(K: np.ndarray, T: np.ndarray, vol: np.ndarray, name: str, S0: float, output_dir: str | None = None) -> None:
     """Visualize the implied volatility surface σ(K, T) as a 3D plot.
 
     The x-axis is log-moneyness ``log(K / S0)``, the y-axis is maturity T,
@@ -678,7 +676,7 @@ def plot_surface(K: np.ndarray, T: np.ndarray, vol: np.ndarray, name: str, S0: f
 
 # Absolute Volatility Surface
 
-def plot_surface_absolute(K: np.ndarray, T: np.ndarray, vol: np.ndarray, name: str, output_dir: Optional[str] = None) -> None:
+def plot_surface_absolute(K: np.ndarray, T: np.ndarray, vol: np.ndarray, name: str, output_dir: str | None = None) -> None:
     """Visualize the absolute implied volatility surface as a 3D plot.
 
     The x-axis is strike price K, the y-axis is maturity T, and the
@@ -782,7 +780,7 @@ if __name__ == "__main__":
         K, T, vol = build_surface(fx)
 
         # Log-moneyness surface
-        plot_surface(K, T, vol, fx_name, fx["S0"], output_dir=output_dir)
+        plot_surface(K, T, vol, fx_name, float(fx["S0"]), output_dir=output_dir)
 
         # Absolute strike surface
         plot_surface_absolute(K, T, vol, fx_name, output_dir=output_dir)
