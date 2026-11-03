@@ -780,7 +780,8 @@ if __name__ == "__main__":
         K, T, vol = build_surface(fx)
 
         # Log-moneyness surface
-        plot_surface(K, T, vol, fx_name, float(fx["S0"]), output_dir=output_dir)
+        plot_surface(K, T, vol, fx_name,
+                     float(fx["S0"]), output_dir=output_dir)  # type: ignore[arg-type]
 
         # Absolute strike surface
         plot_surface_absolute(K, T, vol, fx_name, output_dir=output_dir)
