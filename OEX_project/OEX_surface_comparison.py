@@ -67,16 +67,21 @@ WING_C = 2.5   # keep only |ln(K/S0)| <= WING_C * sigma * sqrt(T); beyond that t
 def load_npz(path):
     """Load an OEX .npz into a DataFrame.
 
-    ``np.load(path)`` is used without ``allow_pickle``. Real OEX ``.npz`` files
-    store ``data`` as a pickled object-dtype array (mixed int/str/float columns),
-    so ``np.load`` without ``allow_pickle=True`` raises
-    ``ValueError: Object arrays cannot be loaded when allow_pickle=False`` when
-    ``d["data"]`` is accessed. Per the security hard constraint, ``allow_pickle``
-    must stay off; re-save real ``.npz`` files with typed (non-object) columns
-    before loading them here.
+    ``np.load(path)`` is used without ``allow_pickle`` (security hard
+    constraint). Real OEX ``.npz`` files used to store ``data`` as a pickled
+    object-dtype array; they have been re-saved with typed (non-object)
+    columns -- one 1D array per column under ``data_<col>`` -- plus ``columns``
+    and ``index``. This function reconstructs the 2-D array by column-stacking
+    those typed arrays (one-time data migration: see the re-saved
+    ``ivol_OEX_historical_volatility_*.npz``).
     """
     d = np.load(path)
-    return pd.DataFrame(d["data"], columns=d["columns"], index=d["index"])
+    columns = d["columns"]
+    index = d["index"]
+    # Reconstruct from typed columns (migrated away from a single pickled
+    # object-dtype ``data`` array; ``allow_pickle`` stays off).
+    data = np.column_stack([d[f"data_{col}"] for col in columns])
+    return pd.DataFrame(data, columns=columns, index=index)
 
 
 def find(prefix):
