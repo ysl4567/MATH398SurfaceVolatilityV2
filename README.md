@@ -1,4 +1,4 @@
-# FILESFINAL2/OEX_project
+# FILESFINAL2
 
 1. Run: "OEX_surface_comparison.py" -> Reads: The three .npz data files and "SurfaceVolatility.py" -> Outputs: "output" folder (2 figures and 7 CSVs into "output"), including "OEX_standard_maturities_comparison.csv"
 
